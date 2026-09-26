@@ -20,7 +20,8 @@ import {
   Td,
   Th,
 } from '../brand/ui';
-import { MODELOS } from '../domain/modelos';
+import { MODELOS, modelosDe } from '../domain/modelos';
+import { PROVEEDORES, esProveedor, type Proveedor } from '../domain/ia';
 import { guardarToken, leerToken, olvidarToken, tokenDelEntorno, useEstado } from '../store';
 
 /** Muestra solo los extremos: suficiente para reconocerlo, inútil si se filtra. */
@@ -31,29 +32,47 @@ export function enmascarar(token: string): string {
 
 export function PanelAjustes() {
   const { config, setConfig, reiniciar } = useEstado();
+  const proveedor = config.proveedor;
+  const ficha = PROVEEDORES[proveedor];
 
-  const delEntorno = tokenDelEntorno();
-  const [token, setToken] = useState(delEntorno ? '' : leerToken());
+  const delEntorno = tokenDelEntorno(proveedor);
+  const actual = leerToken(proveedor);
+
+  // El borrador recuerda a qué proveedor pertenece. Al cambiar de
+  // proveedor se descarta: escribir la clave de uno y guardarla en el otro
+  // es un error caro y silencioso.
+  //
+  // El reinicio se hace durante el render y no en un efecto, que es lo que
+  // recomienda React para ajustar estado cuando cambia una entrada: un
+  // efecto provocaría un render de más y un parpadeo del campo.
+  const [borrador, setBorrador] = useState({ proveedor, token: '' });
   const [visible, setVisible] = useState(false);
   const [guardado, setGuardado] = useState(false);
 
-  const actual = leerToken();
+  if (borrador.proveedor !== proveedor) {
+    setBorrador({ proveedor, token: '' });
+    setVisible(false);
+  }
+
+  const token = borrador.proveedor === proveedor ? borrador.token : '';
+  const setToken = (v: string) => setBorrador({ proveedor, token: v });
 
   function guardar() {
-    guardarToken(token);
+    guardarToken(proveedor, token);
+    setToken('');
     setGuardado(true);
     setTimeout(() => setGuardado(false), 2000);
   }
 
   function olvidar() {
-    olvidarToken();
+    olvidarToken(proveedor);
     setToken('');
   }
 
   return (
     <div className="space-y-6">
       <Tarjeta
-        titulo="Token de MiniMax"
+        titulo={`Token de ${ficha.rotulo}`}
         descripcion="Queda únicamente en el almacenamiento local de este navegador."
         acciones={
           actual ? (
@@ -68,7 +87,7 @@ export function PanelAjustes() {
         {delEntorno ? (
           <Llamado tono="info" titulo="El token viene del entorno" icono={<KeyRound size={18} />}>
             <p>
-              Está definido en <span className="font-mono text-xs">VITE_MINIMAX_API_KEY</span> y
+              Está definido en <span className="font-mono text-xs">{ficha.variableEntorno}</span> y
               tiene prioridad sobre el que se guarde aquí. Para cambiarlo, edite su archivo{' '}
               <span className="font-mono text-xs">.env</span> y reinicie el servidor de desarrollo.
             </p>
@@ -81,7 +100,7 @@ export function PanelAjustes() {
             <div className="grid gap-4 sm:grid-cols-[1fr_auto]">
               <Campo
                 etiqueta="Token"
-                ayuda="Obténgalo en minimax.io/platform → API Keys. No se versiona nunca."
+                ayuda={`Obténgalo en ${ficha.consola} → API Keys. No se versiona nunca.`}
               >
                 {(id) => (
                   <Entrada
@@ -133,6 +152,31 @@ export function PanelAjustes() {
         }
       >
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          <Campo
+            etiqueta="Proveedor"
+            ayuda="Cada uno guarda su propio token; cambiar aquí no borra el del otro."
+          >
+            {(id) => (
+              <Seleccion
+                id={id}
+                value={proveedor}
+                onChange={(e) => {
+                  const v = e.target.value;
+                  if (!esProveedor(v)) return;
+                  // El modelo vuelve a «automático»: el del proveedor
+                  // anterior no existe en el nuevo catálogo.
+                  setConfig({ proveedor: v, modelo: 'auto' });
+                }}
+              >
+                {(Object.keys(PROVEEDORES) as Proveedor[]).map((k) => (
+                  <option key={k} value={k}>
+                    {PROVEEDORES[k].rotulo}
+                  </option>
+                ))}
+              </Seleccion>
+            )}
+          </Campo>
+
           <Campo etiqueta="Modelo" ayuda="«Automático» elige según el tamaño de la petición.">
             {(id) => (
               <Seleccion
@@ -141,7 +185,7 @@ export function PanelAjustes() {
                 onChange={(e) => setConfig({ modelo: e.target.value })}
               >
                 <option value="auto">Automático</option>
-                {MODELOS.map((m) => (
+                {modelosDe(proveedor).map((m) => (
                   <option key={m.id} value={m.id}>
                     {m.rotulo}
                   </option>
@@ -195,8 +239,10 @@ export function PanelAjustes() {
             {(id) => (
               <Entrada
                 id={id}
-                value={config.baseURL}
-                onChange={(e) => setConfig({ baseURL: e.target.value })}
+                value={config.baseURL[proveedor]}
+                onChange={(e) =>
+                  setConfig({ baseURL: { ...config.baseURL, [proveedor]: e.target.value } })
+                }
               />
             )}
           </Campo>
@@ -219,6 +265,7 @@ export function PanelAjustes() {
           <thead>
             <tr>
               <Th>Modelo</Th>
+              <Th>Proveedor</Th>
               <Th numerico>Contexto</Th>
               <Th numerico>Entrada (US$/M)</Th>
               <Th numerico>Salida (US$/M)</Th>
@@ -231,6 +278,11 @@ export function PanelAjustes() {
                 <Td>
                   <span className="font-medium">{m.rotulo}</span>
                   <span className="block text-xs text-texto-3">{m.descripcion}</span>
+                </Td>
+                <Td>
+                  <Insignia tono={m.proveedor === proveedor ? 'marca' : 'neutro'}>
+                    {PROVEEDORES[m.proveedor].rotulo}
+                  </Insignia>
                 </Td>
                 <Td numerico>{m.contexto.toLocaleString('es-CO')}</Td>
                 <Td numerico>{m.precioEntrada.toFixed(2)}</Td>

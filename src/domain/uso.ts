@@ -7,6 +7,7 @@
  */
 
 import { costoDe, modeloDe, type Costo } from './modelos';
+import type { Proveedor } from './ia';
 import type { TipoArtefacto } from './artefactos';
 
 export interface Llamada {
@@ -15,6 +16,7 @@ export interface Llamada {
   readonly momento: string;
   readonly sesionId: string;
   readonly tipo: TipoArtefacto;
+  readonly proveedor: Proveedor;
   readonly modelo: string;
   readonly tokensEntrada: number;
   readonly tokensSalida: number;
@@ -59,7 +61,7 @@ export function resumir(llamadas: readonly Llamada[]): ResumenUso {
     tokensEntrada += l.tokensEntrada;
     tokensSalida += l.tokensSalida;
 
-    const c = costoDe(modeloDe(l.modelo), l.tokensEntrada, l.tokensSalida);
+    const c = costoDe(modeloDe(l.modelo, l.proveedor), l.tokensEntrada, l.tokensSalida);
     entrada += c.entrada;
     salida += c.salida;
 

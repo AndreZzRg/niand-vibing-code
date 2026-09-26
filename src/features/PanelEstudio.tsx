@@ -17,6 +17,7 @@ import {
   type TipoArtefacto,
 } from '../domain/artefactos';
 import { estimarTokens, razonSeleccion, resolverModelo } from '../domain/modelos';
+import { PROVEEDORES } from '../domain/ia';
 import { leerToken, nuevoId, sesionActiva, useEstado } from '../store';
 import { ejecutarGeneracion } from './ejecutar';
 
@@ -31,7 +32,7 @@ export function PanelEstudio() {
   const [error, setError] = useState<string | null>(null);
   const abortar = useRef<AbortController | null>(null);
 
-  const token = leerToken();
+  const token = leerToken(config.proveedor);
   const hayToken = token.trim() !== '';
 
   const peticion = borrador.trim();
@@ -41,8 +42,8 @@ export function PanelEstudio() {
   // la del peor caso y no una que se quede corta.
   const mensajesMuestra = construirMensajes('pruebas', { peticion, previos });
   const tokensEstimados = estimarTokens(textoDeMensajes(mensajesMuestra));
-  const modelo = resolverModelo(config.modelo, tokensEstimados);
-  const razon = razonSeleccion(config.modelo, tokensEstimados);
+  const modelo = resolverModelo(config.modelo, tokensEstimados, config.proveedor);
+  const razon = razonSeleccion(config.modelo, tokensEstimados, config.proveedor);
 
   async function ejecutar(tipo: TipoArtefacto) {
     if (!peticion || !hayToken || generando) return;
@@ -82,12 +83,18 @@ export function PanelEstudio() {
   return (
     <div className="space-y-6">
       {!hayToken && (
-        <Llamado tono="alerta" titulo="Falta el token de MiniMax" icono={<KeyRound size={18} />}>
+        <Llamado
+          tono="alerta"
+          titulo={`Falta el token de ${PROVEEDORES[config.proveedor].rotulo}`}
+          icono={<KeyRound size={18} />}
+        >
           <p>
             Configúrelo en <strong>Ajustes y token</strong> o defina{' '}
-            <span className="font-mono text-xs">VITE_MINIMAX_API_KEY</span> en su archivo{' '}
-            <span className="font-mono text-xs">.env</span>. El token queda solo en su navegador y
-            nunca se versiona.
+            <span className="font-mono text-xs">
+              {PROVEEDORES[config.proveedor].variableEntorno}
+            </span>{' '}
+            en su archivo <span className="font-mono text-xs">.env</span>. El token queda solo en su
+            navegador y nunca se versiona.
           </p>
         </Llamado>
       )}

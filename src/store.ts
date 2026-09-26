@@ -13,34 +13,44 @@ import { createJSONStorage, persist } from 'zustand/middleware';
 import { almacenZustand, borrar, leer, escribir } from './lib/almacen';
 import type { TipoArtefacto } from './domain/artefactos';
 import type { Llamada } from './domain/uso';
-import { MODELO_POR_DEFECTO } from './domain/modelos';
+import { PROVEEDORES, type Proveedor } from './domain/ia';
 import { z } from 'zod';
 
 /* ── Token: guardado aparte y nunca exportado ─────────────────────── */
 
-const CLAVE_TOKEN = 'token';
+/**
+ * Cada proveedor guarda su token bajo su propia clave. Cambiar de MiniMax
+ * a Gemini no obliga a volver a pegar la credencial del otro, y un token
+ * nunca llega a un proveedor que no es el suyo.
+ */
 const VERSION_TOKEN = 1;
+const claveToken = (p: Proveedor) => `token:${p}`;
 
-export function leerToken(): string {
+/** Token declarado en el entorno, si lo hay, para ese proveedor. */
+function tokenDelEntornoDe(p: Proveedor): string {
+  const v = import.meta.env[PROVEEDORES[p].variableEntorno] as unknown;
+  return typeof v === 'string' ? v.trim() : '';
+}
+
+export function leerToken(p: Proveedor): string {
   // La variable de entorno tiene prioridad: permite usar la aplicación sin
   // pegar el token en el navegador.
-  const delEntorno = import.meta.env.VITE_MINIMAX_API_KEY;
-  if (typeof delEntorno === 'string' && delEntorno.trim()) return delEntorno.trim();
-  return leer(CLAVE_TOKEN, z.string(), VERSION_TOKEN, '');
+  const delEntorno = tokenDelEntornoDe(p);
+  if (delEntorno) return delEntorno;
+  return leer(claveToken(p), z.string(), VERSION_TOKEN, '');
 }
 
-export function guardarToken(token: string): boolean {
-  return escribir(CLAVE_TOKEN, VERSION_TOKEN, token.trim());
+export function guardarToken(p: Proveedor, token: string): boolean {
+  return escribir(claveToken(p), VERSION_TOKEN, token.trim());
 }
 
-export function olvidarToken(): void {
-  borrar(CLAVE_TOKEN);
+export function olvidarToken(p: Proveedor): void {
+  borrar(claveToken(p));
 }
 
 /** `true` cuando el token viene del entorno y no se puede editar aquí. */
-export function tokenDelEntorno(): boolean {
-  const v = import.meta.env.VITE_MINIMAX_API_KEY;
-  return typeof v === 'string' && v.trim() !== '';
+export function tokenDelEntorno(p: Proveedor): boolean {
+  return tokenDelEntornoDe(p) !== '';
 }
 
 /* ── Sesiones y artefactos ────────────────────────────────────────── */
@@ -63,7 +73,10 @@ export interface Sesion {
 }
 
 export interface Configuracion {
-  baseURL: string;
+  /** Proveedor con el que se generan los artefactos. */
+  proveedor: Proveedor;
+  /** URL base por proveedor: solo se cambia para usar una pasarela propia. */
+  baseURL: Record<Proveedor, string>;
   /** `auto` deja que el dominio elija el modelo por tamaño de la petición. */
   modelo: string;
   temperatura: number;
@@ -105,19 +118,14 @@ export function tituloDesde(peticion: string): string {
   return limpia.length > 60 ? `${limpia.slice(0, 57)}…` : limpia;
 }
 
-const BASE_URL_POR_DEFECTO =
-  (typeof import.meta.env.VITE_MINIMAX_BASE_URL === 'string' &&
-    import.meta.env.VITE_MINIMAX_BASE_URL) ||
-  'https://api.minimax.io/v1';
-
-const MODELO_INICIAL =
-  (typeof import.meta.env.VITE_MINIMAX_MODEL === 'string' && import.meta.env.VITE_MINIMAX_MODEL) ||
-  'auto';
-
 const INICIAL = {
   config: {
-    baseURL: BASE_URL_POR_DEFECTO,
-    modelo: MODELO_INICIAL || 'auto',
+    proveedor: 'minimax',
+    baseURL: {
+      minimax: PROVEEDORES.minimax.baseURLPorDefecto,
+      gemini: PROVEEDORES.gemini.baseURLPorDefecto,
+    },
+    modelo: 'auto',
     temperatura: 0.3,
     maxTokens: 8192,
     presupuesto: 0,
@@ -206,5 +214,3 @@ export const useEstado = create<Estado>()(
 export function sesionActiva(s: Estado): Sesion | null {
   return s.sesiones.find((x) => x.id === s.sesionActivaId) ?? s.sesiones[0] ?? null;
 }
-
-export { MODELO_POR_DEFECTO };

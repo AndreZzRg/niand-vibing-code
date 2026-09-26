@@ -9,7 +9,7 @@
 
 import { construirMensajes, textoDeMensajes, type TipoArtefacto } from '../domain/artefactos';
 import { estimarTokens, resolverModelo } from '../domain/modelos';
-import { ErrorMiniMax, generar } from '../domain/minimax';
+import { ErrorIA, generar } from '../domain/ia';
 import type { Llamada } from '../domain/uso';
 import type { Artefacto, Configuracion } from '../store';
 
@@ -37,7 +37,7 @@ export interface ResultadoGeneracion {
 export async function ejecutarGeneracion(p: PeticionGeneracion): Promise<ResultadoGeneracion> {
   const mensajes = construirMensajes(p.tipo, { peticion: p.peticion, previos: p.previos });
   const tokensEntrada = estimarTokens(textoDeMensajes(mensajes));
-  const modelo = resolverModelo(p.config.modelo, tokensEntrada);
+  const modelo = resolverModelo(p.config.modelo, tokensEntrada, p.config.proveedor);
 
   const inicio = Date.now();
   let recibido = '';
@@ -46,19 +46,21 @@ export async function ejecutarGeneracion(p: PeticionGeneracion): Promise<Resulta
     id: p.nuevoId('lla'),
     sesionId: p.sesionId,
     tipo: p.tipo,
+    proveedor: p.config.proveedor,
     modelo: modelo.id,
   };
 
   try {
     const r = await generar({
-      baseURL: p.config.baseURL,
+      proveedor: p.config.proveedor,
+      baseURL: p.config.baseURL[p.config.proveedor],
       token: p.token,
       modelo: modelo.id,
       mensajes,
       temperatura: p.config.temperatura,
       maxTokens: p.config.maxTokens,
       señal: p.señal,
-      alRecibir: (f) => {
+      alRecibir: (f: string) => {
         recibido += f;
         p.alRecibir(f);
       },
@@ -99,7 +101,7 @@ export async function ejecutarGeneracion(p: PeticionGeneracion): Promise<Resulta
       },
       error: cancelado
         ? null
-        : e instanceof ErrorMiniMax
+        : e instanceof ErrorIA
           ? e.message
           : 'Ocurrió un error inesperado al generar.',
       cancelado,

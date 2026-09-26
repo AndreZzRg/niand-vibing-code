@@ -42,6 +42,14 @@ versionado sigue [Versionado Semántico](https://semver.org/lang/es/).
 
 ### Agregado
 
+- **Segundo proveedor de modelos: Google Gemini.** El cliente pasa a ser
+  agnóstico y el proveedor se elige en Ajustes. MiniMax y Gemini difieren en
+  ruta, cabecera de autenticación, forma del cuerpo y sitio donde ponen el
+  texto de cada fragmento; esas cuatro diferencias quedan aisladas en un
+  adaptador por proveedor y el resto del programa llama a una sola función.
+- Cada proveedor guarda **su propio token** bajo su propia clave, de modo que
+  cambiar de uno a otro no obliga a volver a pegar la credencial ni puede
+  mandarle a un proveedor la clave del otro.
 - **Portada de módulos.** La aplicación abre mostrando de qué se compone y,
   cuando el módulo aporta una cifra, en qué estado está, en vez de caer
   dentro del primer módulo sin contexto. Alterna entre rejilla —para
